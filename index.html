@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AdPlat - Биржа рекламы</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f3f4f6;
+        }
+        .ad-card {
+            background-color: #ffffff;
+            border-radius: 0.5rem;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            transition: transform 0.2s ease-in-out;
+        }
+        .ad-card:hover {
+            transform: translateY(-5px);
+        }
+        .gradient-button {
+            background-image: linear-gradient(to right, #6EE7B7, #3B82F6);
+            color: white;
+            padding: 0.75rem 1.5rem;
+            border-radius: 9999px;
+            font-weight: 600;
+            text-align: center;
+        }
+        .section {
+            display: none;
+        }
+        .section.active {
+            display: block;
+        }
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 100;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            background-color: rgba(0,0,0,0.4);
+            justify-content: center;
+            align-items: center;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 flex flex-col min-h-screen">
+
+    <!-- Firebase SDKs -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, onSnapshot, addDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // IMPORTANT: Replace this with your actual Firebase project configuration.
+        // You can find this in your Firebase Console under Project Settings.
+        const firebaseConfig = {
+            apiKey: "YOUR_API_KEY",
+            authDomain: "YOUR_AUTH_DOMAIN",
+            projectId: "YOUR_PROJECT_ID",
+            storageBucket: "YOUR_STORAGE_BUCKET",
+            messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
+            appId: "YOUR_APP_ID"
+        };
+
+        let db, auth;
+        let userId;
+        const appId = firebaseConfig.projectId;
+        let currentView = 'influencer';
+
+        document.addEventListener("DOMContentLoaded", async () => {
+            try {
+                const app = initializeApp(firebaseConfig);
+                auth = getAuth(app);
+                db = getFirestore(app);
+
+                await signInAnonymously(auth);
+
+                auth.onAuthStateChanged(user => {
+                    if (user) {
+                        userId = user.uid;
+                        document.getElementById('user-id-display').innerText = `ID пользователя: ${userId}`;
+                        console.log(`Пользователь вошел: ${userId}`);
+                        setupRealtimeListener();
+                    } else {
+                        console.log("Пользователь не вошел.");
+                    }
+                });
+
+                showSection('exchange-section');
+            } catch (e) {
+                console.error("Ошибка инициализации Firebase:", e);
+                const errorElement = document.getElementById('error-message');
+                errorElement.innerText = "Ошибка загрузки приложения. Пожалуйста, проверьте консоль.";
+                errorElement.classList.remove('hidden');
+            }
+        });
+
+        const showSection = (sectionId) => {
+            document.querySelectorAll('.section').forEach(section => {
+                section.classList.remove('active');
+            });
+            document.getElementById(sectionId).classList.add('active');
+        };
+
+        const renderAds = (ads) => {
+            const adsContainer = document.getElementById('ads-container');
+            adsContainer.innerHTML = '';
+            if (ads.length === 0) {
+                adsContainer.innerHTML = `<p class="text-center text-gray-500">Объявлений пока нет.</p>`;
+                return;
+            }
+            ads.forEach((ad) => {
+                const adCard = document.createElement('div');
+                adCard.className = 'ad-card p-4 my-2';
+                adCard.innerHTML = `
+                    <h3 class="text-xl font-semibold">${ad.title}</h3>
+                    <p class="text-gray-600">${ad.description}</p>
+                    <p class="text-sm text-gray-400 mt-2">Тип: ${ad.type === 'influencer' ? 'Инфлюенсер' : 'Рекламодатель'}</p>
+                    <p class="text-sm text-gray-400">ID создателя: ${ad.creatorId}</p>
+                `;
+                adsContainer.appendChild(adCard);
+            });
+        };
+
+        const setupRealtimeListener = () => {
+            const publicCollectionPath = `/artifacts/${appId}/public/data/ads`;
+            const q = collection(db, publicCollectionPath);
+
+            onSnapshot(q, (snapshot) => {
+                const allAds = snapshot.docs.map(doc => doc.data());
+                const sortedAds = allAds.sort((a, b) => b.createdAt.toDate() - a.createdAt.toDate());
+                const filteredAds = sortedAds.filter(ad => ad.type === currentView);
+                renderAds(filteredAds);
+            });
+        };
+
+        window.createAd = async () => {
+            const adTitle = document.getElementById('new-ad-title').value;
+            const adDescription = document.getElementById('new-ad-description').value;
+
+            if (!adTitle || !adDescription || !userId) {
+                document.getElementById('modal-error').innerText = 'Пожалуйста, введите заголовок и описание.';
+                document.getElementById('modal-error').classList.remove('hidden');
+                return;
+            } else {
+                document.getElementById('modal-error').classList.add('hidden');
+            }
+
+            try {
+                const publicCollectionPath = `/artifacts/${appId}/public/data/ads`;
+                await addDoc(collection(db, publicCollectionPath), {
+                    title: adTitle,
+                    description: adDescription,
+                    creatorId: userId,
+                    type: currentView,
+                    createdAt: new Date()
+                });
+                console.log("Документ успешно записан.");
+                document.getElementById('new-ad-title').value = '';
+                document.getElementById('new-ad-description').value = '';
+                closeModal();
+            } catch (e) {
+                console.error("Ошибка при добавлении документа: ", e);
+            }
+        };
+
+        window.toggleView = () => {
+            const toggleButton = document.getElementById('toggle-view-button');
+            if (toggleButton.innerText === 'Инфлюенсер') {
+                toggleButton.innerText = 'Рекламодатель';
+                currentView = 'advertiser';
+            } else {
+                toggleButton.innerText = 'Инфлюенсер';
+                currentView = 'influencer';
+            }
+            setupRealtimeListener();
+        };
+
+        window.openModal = () => {
+            document.getElementById('create-ad-modal').style.display = 'flex';
+        };
+
+        window.closeModal = () => {
+            document.getElementById('create-ad-modal').style.display = 'none';
+        };
+    </script>
+
+    <!-- Modal for Ad Creation -->
+    <div id="create-ad-modal" class="modal">
+        <div class="bg-white rounded-lg shadow-xl p-6 w-11/12 max-w-md mx-auto">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-xl font-semibold">Создать объявление</h2>
+                <button onclick="closeModal()" class="text-gray-400 hover:text-gray-600">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
+            </div>
+            <div class="space-y-4">
+                <input type="text" id="new-ad-title" placeholder="Заголовок объявления" class="w-full p-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <textarea id="new-ad-description" placeholder="Описание объявления" class="w-full p-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"></textarea>
+                <div id="modal-error" class="hidden text-red-500 text-sm"></div>
+                <button onclick="createAd()" class="gradient-button w-full">Создать</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Header -->
+    <header class="bg-white p-4 flex justify-between items-center rounded-b-lg shadow-sm">
+        <h1 class="text-2xl font-bold">AdPlat</h1>
+        <div class="flex items-center">
+            <span id="user-id-display" class="text-sm text-gray-500 mr-4">ID пользователя: ...</span>
+            <div class="w-8 h-8 bg-gray-300 rounded-full flex items-center justify-center text-gray-500 font-bold">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                    <path fill-rule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clip-rule="evenodd" />
+                </svg>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content Sections -->
+    <main class="container mx-auto p-4 flex-grow">
+        <!-- Exchange Section -->
+        <section id="exchange-section" class="section active">
+            <div class="text-center my-4">
+                <button id="toggle-view-button" onclick="toggleView()" class="gradient-button">Инфлюенсер</button>
+            </div>
+            <div id="ads-container" class="grid gap-4">
+                <p class="text-center text-gray-500">Загрузка объявлений...</p>
+            </div>
+        </section>
+
+        <!-- Money Section -->
+        <section id="money-section" class="section">
+            <div class="text-center my-8">
+                <h2 class="text-2xl font-bold">Раздел «Деньги»</h2>
+                <p class="text-gray-600 mt-2">Здесь будет информация о твоем балансе и транзакциях.</p>
+
+            </div>
+        </section>
+
+        <!-- Profile Section -->
+        <section id="profile-section" class="section">
+            <div class="text-center my-8">
+                <h2 class="text-2xl font-bold">Раздел «Профиль»</h2>
+                <p class="text-gray-600 mt-2">Здесь ты сможешь настроить свою учетную запись и просмотреть свои объявления.</p>
+
+            </div>
+        </section>
+
+        <!-- Settings Section -->
+        <section id="settings-section" class="section">
+            <div class="text-center my-8">
+                <h2 class="text-2xl font-bold">Раздел «Настройки»</h2>
+                <p class="text-gray-600 mt-2">Здесь ты сможешь изменить настройки приложения.</p>
+
+            </div>
+        </section>
+    </main>
+
+    <!-- Footer Menu -->
+    <footer class="bg-white p-4 flex justify-around items-center rounded-t-lg shadow-sm fixed bottom-0 left-0 w-full">
+        <button onclick="showSection('exchange-section')" class="flex flex-col items-center text-gray-500 hover:text-blue-500">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" viewBox="0 0 24 24" fill="currentColor"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z" /></svg>
+            <span class="text-xs">Биржа</span>
+        </button>
+        <button onclick="showSection('money-section')" class="flex flex-col items-center text-gray-500 hover:text-blue-500">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" viewBox="0 0 24 24" fill="currentColor"><path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 14H4V6h16v12zM5 7h2v2H5zm0 4h2v2H5zm0 4h2v2H5zm10-2h2v2h-2zm-3 0h2v2h-2zm3-4h2v2h-2zm-3 0h2v2h-2z" /></svg>
+            <span class="text-xs">Деньги</span>
+        </button>
+        <button onclick="openModal()" class="bg-blue-500 text-white p-3 rounded-full shadow-lg -mt-8">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" viewBox="0 0 24 24" fill="currentColor"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6z" /></svg>
+        </button>
+        <button onclick="showSection('profile-section')" class="flex flex-col items-center text-gray-500 hover:text-blue-500">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 3c1.93 0 3.5 1.57 3.5 3.5S13.93 12 12 12s-3.5-1.57-3.5-3.5S10.07 5 12 5zm0 14.2c-2.67 0-5.33-1.33-8-4 2.67-2.67 5.33-4 8-4s5.33 1.33 8 4c-2.67 2.67-5.33 4-8 4z" /></svg>
+            <span class="text-xs">Профиль</span>
+        </button>
+        <button onclick="showSection('settings-section')" class="flex flex-col items-center text-gray-500 hover:text-blue-500">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.9c-3.41-.6-6.1-3.32-6.69-6.79.59-3.47 3.28-6.19 6.69-6.79V19.9zm2-17.9v6.5c3.41.6 6.1 3.32 6.69 6.79-.59 3.47-3.28 6.19-6.69 6.79V4.1z" /></svg>
+            <span class="text-xs">Настройки</span>
+        </button>
+    </footer>
+
+</body>
+</html>
