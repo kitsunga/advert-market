@@ -108,14 +108,16 @@
 
 
         const showSection = (sectionId) => {
-            document.querySelectorAll('.section').forEach(section => {
-                section.classList.remove('active');
-            });
-            document.getElementById(sectionId).classList.add('active');
-            if (sectionId === 'profile-section') {
-                setupProfile();
-            }
-        };
+    document.querySelectorAll('.section').forEach(section => {
+        section.classList.remove('active');
+    });
+    document.getElementById(sectionId).classList.add('active');
+
+    if (sectionId === 'profile-section') {
+        setupProfile(); // всегда обновляем при нажатии
+    }
+};
+
 
         const renderAds = (ads, containerId) => {
             const adsContainer = document.getElementById(containerId);
@@ -202,11 +204,13 @@
         const setupProfile = () => {
     const profileSection = document.getElementById('profile-section');
     try {
-        const user = window.Telegram?.WebApp?.initDataUnsafe?.user;
-        if (user) {
-            const avatarUrl = user.photo_url || 'https://placehold.co/100x100/A0AEC0/ffffff?text=User';
-            const username = user.username ? `@${user.username}` : 'Нет username';
-            const fullName = `${user.first_name || ''} ${user.last_name || ''}`.trim() || 'Пользователь';
+        // Берём данные пользователя из Telegram WebApp
+        const tgUser = window.Telegram?.WebApp?.initDataUnsafe?.user;
+
+        if (tgUser) {
+            const avatarUrl = tgUser.photo_url || 'https://placehold.co/100x100/A0AEC0/ffffff?text=User';
+            const username = tgUser.username ? `@${tgUser.username}` : 'Нет username';
+            const fullName = `${tgUser.first_name || ''} ${tgUser.last_name || ''}`.trim() || 'Пользователь';
 
             profileSection.innerHTML = `
                 <div class="text-center my-8">
@@ -214,14 +218,14 @@
                     <img src="${avatarUrl}" alt="User Avatar" class="w-24 h-24 rounded-full mx-auto shadow-md">
                     <h3 class="text-xl font-semibold mt-4">${fullName}</h3>
                     <p class="text-gray-600">${username}</p>
-                    <p class="text-gray-400 mt-2">ID: ${user.id}</p>
+                    <p class="text-gray-400 mt-2">ID: ${tgUser.id}</p>
                 </div>
             `;
         } else {
             profileSection.innerHTML = `
                 <div class="text-center my-8">
                     <h2 class="text-2xl font-bold mb-4">Раздел «Профиль»</h2>
-                    <p class="text-red-500">Не удалось получить данные пользователя (user пустой).</p>
+                    <p class="text-red-500">Нет данных пользователя. Запусти приложение внутри Telegram.</p>
                 </div>
             `;
         }
@@ -234,6 +238,7 @@
         `;
     }
 };
+
 
 
     </script>
@@ -330,4 +335,5 @@
 
 </body>
 </html>
+
 
