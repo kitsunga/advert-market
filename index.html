@@ -55,7 +55,7 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, collection, onSnapshot, addDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getFirestore, collection, onSnapshot, addDoc, query, where } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         // IMPORTANT: Replace this with your actual Firebase project configuration.
         // You can find this in your Firebase Console under Project Settings.
@@ -67,7 +67,7 @@
             messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
             appId: "YOUR_APP_ID"
         };
-
+        
         let db, auth;
         let userId;
         const appId = firebaseConfig.projectId;
@@ -80,20 +80,20 @@
                 db = getFirestore(app);
 
                 await signInAnonymously(auth);
-
+                
                 auth.onAuthStateChanged(user => {
                     if (user) {
                         userId = user.uid;
                         document.getElementById('user-id-display').innerText = `ID пользователя: ${userId}`;
                         console.log(`Пользователь вошел: ${userId}`);
                         setupRealtimeListener();
+                        setupProfile(); // Вызываем setupProfile после получения userId
                     } else {
                         console.log("Пользователь не вошел.");
                     }
                 });
 
                 showSection('exchange-section');
-                setupProfile();
             } catch (e) {
                 console.error("Ошибка инициализации Firebase:", e);
                 const errorElement = document.getElementById('error-message');
@@ -109,8 +109,8 @@
             document.getElementById(sectionId).classList.add('active');
         };
 
-        const renderAds = (ads) => {
-            const adsContainer = document.getElementById('ads-container');
+        const renderAds = (ads, containerId) => {
+            const adsContainer = document.getElementById(containerId);
             adsContainer.innerHTML = '';
             if (ads.length === 0) {
                 adsContainer.innerHTML = `<p class="text-center text-gray-500">Объявлений пока нет.</p>`;
@@ -134,10 +134,10 @@
             const q = collection(db, publicCollectionPath);
 
             onSnapshot(q, (snapshot) => {
-                const allAds = snapshot.docs.map(doc => doc.data());
+                const allAds = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                 const sortedAds = allAds.sort((a, b) => b.createdAt.toDate() - a.createdAt.toDate());
                 const filteredAds = sortedAds.filter(ad => ad.type === currentView);
-                renderAds(filteredAds);
+                renderAds(filteredAds, 'ads-container');
             });
         };
 
@@ -200,7 +200,7 @@
                         const avatarUrl = userData.photo_url || 'https://placehold.co/100x100/A0AEC0/ffffff?text=User';
                         const username = userData.username ? `@${userData.username}` : 'Нет username';
                         const fullName = `${userData.first_name || ''} ${userData.last_name || ''}`.trim() || 'Пользователь';
-
+                        
                         profileSection.innerHTML = `
                             <div class="text-center my-8">
                                 <h2 class="text-2xl font-bold mb-4">Раздел «Профиль»</h2>
@@ -208,9 +208,24 @@
                                 <h3 class="text-xl font-semibold mt-4">${fullName}</h3>
                                 <p class="text-gray-600">${username}</p>
                                 <p class="text-gray-400 mt-2">ID: ${userData.id}</p>
-                                <p class="text-gray-600 mt-4">Здесь вы сможете настроить свой профиль и просмотреть свои объявления.</p>
+                                <div class="mt-8">
+                                    <h3 class="text-xl font-semibold mb-4">Мои объявления</h3>
+                                    <div id="user-ads-container" class="grid gap-4">
+                                        <p class="text-center text-gray-500">Загрузка объявлений...</p>
+                                    </div>
+                                </div>
                             </div>
                         `;
+
+                        // Теперь подгружаем объявления пользователя
+                        const publicCollectionPath = `/artifacts/${appId}/public/data/ads`;
+                        const q = query(collection(db, publicCollectionPath), where("creatorId", "==", userData.id));
+
+                        onSnapshot(q, (snapshot) => {
+                            const userAds = snapshot.docs.map(doc => doc.data());
+                            renderAds(userAds, 'user-ads-container');
+                        });
+                        
                     } else {
                         profileSection.innerHTML = `
                             <div class="text-center my-8">
@@ -288,7 +303,7 @@
             <div class="text-center my-8">
                 <h2 class="text-2xl font-bold">Раздел «Деньги»</h2>
                 <p class="text-gray-600 mt-2">Здесь будет информация о твоем балансе и транзакциях.</p>
-
+                
             </div>
         </section>
 
@@ -302,7 +317,7 @@
             <div class="text-center my-8">
                 <h2 class="text-2xl font-bold">Раздел «Настройки»</h2>
                 <p class="text-gray-600 mt-2">Здесь ты сможешь изменить настройки приложения.</p>
-
+                
             </div>
         </section>
     </main>
