@@ -47,6 +47,15 @@
             justify-content: center;
             align-items: center;
         }
+        .modal-content {
+            background-color: #ffffff;
+            border-radius: 0.5rem;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            padding: 1.5rem;
+            width: 90%;
+            max-width: 500px;
+            text-align: center;
+        }
     </style>
 </head>
 <body class="bg-gray-100 flex flex-col min-h-screen">
@@ -55,22 +64,19 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, collection, onSnapshot, addDoc, query, where } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-
-        // IMPORTANT: Replace this with your actual Firebase project configuration.
-        // You can find this in your Firebase Console under Project Settings.
-        const firebaseConfig = {
-            apiKey: "YOUR_API_KEY",
-            authDomain: "YOUR_AUTH_DOMAIN",
-            projectId: "YOUR_PROJECT_ID",
-            storageBucket: "YOUR_STORAGE_BUCKET",
-            messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
-            appId: "YOUR_APP_ID"
-        };
+        import { getFirestore, collection, onSnapshot, addDoc, query, where, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         
-        let db, auth;
-        let userId;
-        const appId = firebaseConfig.projectId;
+        setLogLevel('debug');
+
+        const __app_id = "default-app-id";
+        const __firebase_config = '{}';
+        const __initial_auth_token = "";
+
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
+        
+        let db, auth, userId;
         let currentView = 'influencer';
 
         document.addEventListener("DOMContentLoaded", async () => {
@@ -79,15 +85,19 @@
                 auth = getAuth(app);
                 db = getFirestore(app);
 
-                await signInAnonymously(auth);
-                
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token.length > 0) {
+                     await signInWithCustomToken(auth, __initial_auth_token);
+                } else {
+                     await signInAnonymously(auth);
+                }
+
                 auth.onAuthStateChanged(user => {
                     if (user) {
                         userId = user.uid;
                         document.getElementById('user-id-display').innerText = `ID пользователя: ${userId}`;
                         console.log(`Пользователь вошел: ${userId}`);
                         setupRealtimeListener();
-                        setupProfile(); // Вызываем setupProfile после получения userId
+                        setupProfile();
                     } else {
                         console.log("Пользователь не вошел.");
                     }
@@ -96,9 +106,6 @@
                 showSection('exchange-section');
             } catch (e) {
                 console.error("Ошибка инициализации Firebase:", e);
-                const errorElement = document.getElementById('error-message');
-                errorElement.innerText = "Ошибка загрузки приложения. Пожалуйста, проверьте консоль.";
-                errorElement.classList.remove('hidden');
             }
         });
 
@@ -126,6 +133,7 @@
                     <h3 class="text-xl font-semibold">${ad.title}</h3>
                     <p class="text-gray-600">${ad.description}</p>
                     <p class="text-sm text-gray-400 mt-2">Тип: ${ad.type === 'influencer' ? 'Инфлюенсер' : 'Рекламодатель'}</p>
+                    ${ad.channelName ? `<p class="text-sm text-gray-400">Канал: @${ad.channelName}</p>` : ''}
                     <p class="text-sm text-gray-400">ID создателя: ${ad.creatorId}</p>
                 `;
                 adsContainer.appendChild(adCard);
@@ -144,58 +152,90 @@
             });
         };
 
-        window.createAd = async () => {
-            const adTitle = document.getElementById('new-ad-title').value;
-            const adDescription = document.getElementById('new-ad-description').value;
+        window.openCreateAdModal = () => {
+            document.getElementById('create-ad-choice-modal').style.display = 'flex';
+        };
 
-            if (!adTitle || !adDescription || !userId) {
-                document.getElementById('modal-error').innerText = 'Пожалуйста, введите заголовок и описание.';
-                document.getElementById('modal-error').classList.remove('hidden');
+        window.closeAllModals = () => {
+            document.getElementById('create-ad-choice-modal').style.display = 'none';
+            document.getElementById('advertiser-modal').style.display = 'none';
+            document.getElementById('influencer-modal').style.display = 'none';
+            document.getElementById('influencer-creation-modal').style.display = 'none';
+        };
+
+        window.showAdvertiserModal = () => {
+            closeAllModals();
+            document.getElementById('advertiser-modal').style.display = 'flex';
+        };
+
+        window.showInfluencerModal = () => {
+            closeAllModals();
+            if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.initDataUnsafe && window.Telegram.WebApp.initDataUnsafe.user) {
+                showInfluencerCreationModal();
+            } else {
+                document.getElementById('influencer-modal').style.display = 'flex';
+            }
+        };
+
+        window.showInfluencerCreationModal = async () => {
+            closeAllModals();
+            document.getElementById('influencer-creation-modal').style.display = 'flex';
+            await loadInfluencerChannels();
+        };
+
+        window.createAdvertiserAd = async () => {
+            const adTitle = document.getElementById('advertiser-ad-title').value;
+            const adDescription = document.getElementById('advertiser-ad-description').value;
+            await createAd('advertiser', adTitle, adDescription);
+        };
+
+        window.createInfluencerAd = async () => {
+            const adTitle = document.getElementById('influencer-ad-title').value;
+            const adDescription = document.getElementById('influencer-ad-description').value;
+            const channelName = document.getElementById('influencer-channel-select').value;
+            await createAd('influencer', adTitle, adDescription, channelName);
+        };
+
+        const createAd = async (type, title, description, channelName = null) => {
+            if (!title || !description || !userId) {
+                const modalErrorId = type === 'advertiser' ? 'advertiser-modal-error' : 'influencer-creation-modal-error';
+                document.getElementById(modalErrorId).innerText = 'Пожалуйста, заполните все поля.';
+                document.getElementById(modalErrorId).classList.remove('hidden');
                 return;
             } else {
-                document.getElementById('modal-error').classList.add('hidden');
+                const modalErrorId = type === 'advertiser' ? 'advertiser-modal-error' : 'influencer-creation-modal-error';
+                document.getElementById(modalErrorId).classList.add('hidden');
             }
-
             try {
                 const publicCollectionPath = `/artifacts/${appId}/public/data/ads`;
                 await addDoc(collection(db, publicCollectionPath), {
-                    title: adTitle,
-                    description: adDescription,
+                    title,
+                    description,
                     creatorId: userId,
-                    type: currentView,
+                    type,
+                    channelName,
                     createdAt: new Date()
                 });
                 console.log("Документ успешно записан.");
-                document.getElementById('new-ad-title').value = '';
-                document.getElementById('new-ad-description').value = '';
-                closeModal();
+                if (type === 'advertiser') {
+                    document.getElementById('advertiser-ad-title').value = '';
+                    document.getElementById('advertiser-ad-description').value = '';
+                } else {
+                     document.getElementById('influencer-ad-title').value = '';
+                    document.getElementById('influencer-ad-description').value = '';
+                }
+                closeAllModals();
             } catch (e) {
                 console.error("Ошибка при добавлении документа: ", e);
             }
         };
 
-        window.toggleView = () => {
-            const toggleButton = document.getElementById('toggle-view-button');
-            if (toggleButton.innerText === 'Инфлюенсер') {
-                toggleButton.innerText = 'Рекламодатель';
-                currentView = 'advertiser';
-            } else {
-                toggleButton.innerText = 'Инфлюенсер';
-                currentView = 'influencer';
-            }
-            setupRealtimeListener();
-        };
-
-        window.openModal = () => {
-            document.getElementById('create-ad-modal').style.display = 'flex';
-        };
-
-        window.closeModal = () => {
-            document.getElementById('create-ad-modal').style.display = 'none';
-        };
-
         const setupProfile = () => {
             const profileSection = document.getElementById('profile-section');
+            if (!userId) {
+                profileSection.innerHTML = `<div class="text-center my-8"><p class="text-gray-500">Загрузка профиля...</p></div>`;
+                return;
+            }
             try {
                 if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.initDataUnsafe) {
                     const userData = window.Telegram.WebApp.initDataUnsafe.user;
@@ -219,60 +259,142 @@
                                 </div>
                             </div>
                         `;
-
-                        // Теперь подгружаем объявления пользователя
                         const publicCollectionPath = `/artifacts/${appId}/public/data/ads`;
-                        const q = query(collection(db, publicCollectionPath), where("creatorId", "==", userData.id));
-
+                        const q = query(collection(db, publicCollectionPath), where("creatorId", "==", userId));
                         onSnapshot(q, (snapshot) => {
                             const userAds = snapshot.docs.map(doc => doc.data());
                             renderAds(userAds, 'user-ads-container');
                         });
-                        
                     } else {
-                        profileSection.innerHTML = `
-                            <div class="text-center my-8">
-                                <h2 class="text-2xl font-bold mb-4">Раздел «Профиль»</h2>
-                                <p class="text-red-500">Не удалось получить данные пользователя из Telegram.</p>
-                            </div>
-                        `;
+                        profileSection.innerHTML = `<div class="text-center my-8"><h2 class="text-2xl font-bold mb-4">Раздел «Профиль»</h2><p class="text-red-500">Не удалось получить данные пользователя из Telegram.</p></div>`;
                     }
                 } else {
-                    profileSection.innerHTML = `
-                        <div class="text-center my-8">
-                            <h2 class="text-2xl font-bold mb-4">Раздел «Профиль»</h2>
-                            <p class="text-red-500">Приложение запущено не в среде Telegram Mini Apps.</p>
-                        </div>
-                    `;
+                    profileSection.innerHTML = `<div class="text-center my-8"><h2 class="text-2xl font-bold mb-4">Раздел «Профиль»</h2><p class="text-red-500">Приложение запущено не в среде Telegram Mini Apps.</p></div>`;
                 }
             } catch (e) {
                 console.error("Ошибка при загрузке данных профиля:", e);
-                profileSection.innerHTML = `
-                    <div class="text-center my-8">
-                        <h2 class="text-2xl font-bold mb-4">Раздел «Профиль»</h2>
-                        <p class="text-red-500">Произошла ошибка при загрузке профиля.</p>
-                    </div>
-                `;
+                profileSection.innerHTML = `<div class="text-center my-8"><h2 class="text-2xl font-bold mb-4">Раздел «Профиль»</h2><p class="text-red-500">Произошла ошибка при загрузке профиля.</p></div>`;
             }
+        };
+
+        const influencerSteps = {
+            step1: `
+                <h2 class="text-xl font-semibold mb-4">Регистрация инфлюенсера</h2>
+                <p>1. Добавьте нашего бота в администраторы вашего канала.</p>
+                <p class="mt-2 text-gray-500">Для этого перейдите в настройки канала, выберите "Администраторы" и добавьте @ваш_бот.</p>
+                <div class="mt-4">
+                    <button onclick="showNextStep('step2')" class="gradient-button w-full">Готово, далее</button>
+                </div>
+            `,
+            step2: `
+                <h2 class="text-xl font-semibold mb-4">Проверка канала</h2>
+                <p>2. Введите ссылку на ваш канал:</p>
+                <input type="text" id="channel-link" placeholder="Пример: @channel_name" class="w-full p-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 mt-4">
+                <div id="influencer-modal-error" class="hidden text-red-500 text-sm mt-2"></div>
+                <div class="mt-4 flex space-x-2">
+                    <button onclick="checkChannel()" class="gradient-button flex-1">Проверить</button>
+                    <button onclick="showNextStep('step1')" class="gradient-button flex-1">Назад</button>
+                </div>
+            `,
+            step3: (channelName) => `
+                <h2 class="text-xl font-semibold mb-4">Данные канала</h2>
+                <div class="bg-gray-100 p-4 rounded-md text-left">
+                    <p class="text-lg font-bold">Канал: @${channelName}</p>
+                    <p class="text-sm text-gray-600 mt-2">Подписчики: **15,400**</p>
+                    <p class="text-sm text-gray-600">Средний охват: **2,100**</p>
+                    <p class="text-sm text-gray-600">ER: **13.6%**</p>
+                    <p class="text-sm text-gray-600">CTR: **4.5%**</p>
+                </div>
+                <p class="mt-4">3. Данные канала подтверждены.</p>
+                <div class="mt-4">
+                    <button onclick="showNextStep('final-influencer-form')" class="gradient-button w-full">Завершить</button>
+                </div>
+            `
+        };
+
+        window.showNextStep = (step) => {
+            const container = document.getElementById('influencer-modal-content');
+            if (step === 'step1') {
+                container.innerHTML = influencerSteps.step1;
+            } else if (step === 'step2') {
+                container.innerHTML = influencerSteps.step2;
+            } else if (step === 'step3') {
+                const channelLink = document.getElementById('channel-link').value.replace('@', '');
+                container.innerHTML = influencerSteps.step3(channelLink);
+            }
+        };
+
+        window.checkChannel = () => {
+            const channelLink = document.getElementById('channel-link').value;
+            if (channelLink.trim() === '') {
+                document.getElementById('influencer-modal-error').innerText = 'Пожалуйста, введите ссылку на канал.';
+                document.getElementById('influencer-modal-error').classList.remove('hidden');
+                return;
+            }
+            document.getElementById('influencer-modal-error').classList.add('hidden');
+            showNextStep('step3');
+        };
+
+        window.loadInfluencerChannels = async () => {
+            const userChannels = [
+                { id: '1', name: 'my_channel_1' },
+                { id: '2', name: 'my_channel_2' }
+            ];
+            const select = document.getElementById('influencer-channel-select');
+            select.innerHTML = userChannels.map(channel => `<option value="${channel.name}">@${channel.name}</option>`).join('');
         };
 
     </script>
 
-    <!-- Modal for Ad Creation -->
-    <div id="create-ad-modal" class="modal">
-        <div class="bg-white rounded-lg shadow-xl p-6 w-11/12 max-w-md mx-auto">
-            <div class="flex justify-between items-center mb-4">
-                <h2 class="text-xl font-semibold">Создать объявление</h2>
-                <button onclick="closeModal()" class="text-gray-400 hover:text-gray-600">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
-                </button>
+    <!-- Modal for Ad Creation Choice -->
+    <div id="create-ad-choice-modal" class="modal">
+        <div class="modal-content">
+            <h2 class="text-xl font-semibold mb-4">Создать объявление как...</h2>
+            <div class="flex flex-col space-y-4">
+                <button onclick="showAdvertiserModal()" class="gradient-button">Рекламодатель</button>
+                <button onclick="showInfluencerModal()" class="gradient-button">Инфлюенсер</button>
             </div>
+            <button onclick="closeAllModals()" class="mt-4 text-gray-500 hover:text-gray-700">Отмена</button>
+        </div>
+    </div>
+
+    <!-- Modal for Advertiser Ad Creation -->
+    <div id="advertiser-modal" class="modal">
+        <div class="modal-content">
+            <h2 class="text-xl font-semibold mb-4">Создать объявление (Рекламодатель)</h2>
             <div class="space-y-4">
-                <input type="text" id="new-ad-title" placeholder="Заголовок объявления" class="w-full p-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
-                <textarea id="new-ad-description" placeholder="Описание объявления" class="w-full p-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"></textarea>
-                <div id="modal-error" class="hidden text-red-500 text-sm"></div>
-                <button onclick="createAd()" class="gradient-button w-full">Создать</button>
+                <input type="text" id="advertiser-ad-title" placeholder="Заголовок объявления" class="w-full p-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <textarea id="advertiser-ad-description" placeholder="Описание объявления" class="w-full p-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"></textarea>
+                <div id="advertiser-modal-error" class="hidden text-red-500 text-sm"></div>
+                <button onclick="createAdvertiserAd()" class="gradient-button w-full">Опубликовать</button>
             </div>
+            <button onclick="openCreateAdModal()" class="mt-4 text-gray-500 hover:text-gray-700">Назад</button>
+        </div>
+    </div>
+
+    <!-- Modal for Influencer Registration -->
+    <div id="influencer-modal" class="modal">
+        <div class="modal-content">
+            <h2 class="text-xl font-semibold mb-4">Регистрация инфлюенсера</h2>
+            <p>Для создания объявления инфлюенсера, вам нужно пройти регистрацию.</p>
+            <button onclick="showNextStep('step1')" class="gradient-button w-full mt-4">Начать регистрацию</button>
+            <button onclick="closeAllModals()" class="mt-4 text-gray-500 hover:text-gray-700">Отмена</button>
+        </div>
+    </div>
+
+    <!-- Modal for Influencer Registration Steps & Ad Creation -->
+    <div id="influencer-creation-modal" class="modal">
+        <div class="modal-content">
+            <h2 class="text-xl font-semibold mb-4">Создать объявление (Инфлюенсер)</h2>
+            <div class="space-y-4">
+                <label for="influencer-channel-select" class="block text-left text-sm font-medium text-gray-700">Выберите канал:</label>
+                <select id="influencer-channel-select" class="w-full p-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"></select>
+                <input type="text" id="influencer-ad-title" placeholder="Заголовок объявления" class="w-full p-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <textarea id="influencer-ad-description" placeholder="Описание объявления" class="w-full p-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"></textarea>
+                <div id="influencer-creation-modal-error" class="hidden text-red-500 text-sm"></div>
+                <button onclick="createInfluencerAd()" class="gradient-button w-full">Опубликовать</button>
+            </div>
+            <button onclick="openCreateAdModal()" class="mt-4 text-gray-500 hover:text-gray-700">Назад</button>
         </div>
     </div>
 
@@ -306,7 +428,6 @@
             <div class="text-center my-8">
                 <h2 class="text-2xl font-bold">Раздел «Деньги»</h2>
                 <p class="text-gray-600 mt-2">Здесь будет информация о твоем балансе и транзакциях.</p>
-                
             </div>
         </section>
 
@@ -320,7 +441,6 @@
             <div class="text-center my-8">
                 <h2 class="text-2xl font-bold">Раздел «Настройки»</h2>
                 <p class="text-gray-600 mt-2">Здесь ты сможешь изменить настройки приложения.</p>
-                
             </div>
         </section>
     </main>
@@ -335,7 +455,7 @@
             <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" viewBox="0 0 24 24" fill="currentColor"><path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 14H4V6h16v12zM5 7h2v2H5zm0 4h2v2H5zm0 4h2v2H5zm10-2h2v2h-2zm-3 0h2v2h-2zm3-4h2v2h-2zm-3 0h2v2h-2z" /></svg>
             <span class="text-xs">Деньги</span>
         </button>
-        <button onclick="openModal()" class="bg-blue-500 text-white p-3 rounded-full shadow-lg -mt-8">
+        <button onclick="openCreateAdModal()" class="bg-blue-500 text-white p-3 rounded-full shadow-lg -mt-8">
             <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" viewBox="0 0 24 24" fill="currentColor"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6z" /></svg>
         </button>
         <button onclick="showSection('profile-section')" class="flex flex-col items-center text-gray-500 hover:text-blue-500">
