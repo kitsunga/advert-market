@@ -107,6 +107,9 @@
                 section.classList.remove('active');
             });
             document.getElementById(sectionId).classList.add('active');
+            if (sectionId === 'profile-section') {
+                setupProfile();
+            }
         };
 
         const renderAds = (ads, containerId) => {
