@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AdPlat 1</title>
+    <title>AdPlat - Биржа рекламы</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
@@ -250,7 +250,7 @@
                 </button>
             </div>
             <div class="space-y-4">
-                <input type="text" id="new-ad-title" placeholder="Заголовок" class="w-full p-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <input type="text" id="new-ad-title" placeholder="Заголовок объявления" class="w-full p-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
                 <textarea id="new-ad-description" placeholder="Описание объявления" class="w-full p-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"></textarea>
                 <div id="modal-error" class="hidden text-red-500 text-sm"></div>
                 <button onclick="createAd()" class="gradient-button w-full">Создать</button>
@@ -279,7 +279,7 @@
                 <button id="toggle-view-button" onclick="toggleView()" class="gradient-button">Инфлюенсер</button>
             </div>
             <div id="ads-container" class="grid gap-4">
-                <p class="text-center text-gray-500">Загрузка</p>
+                <p class="text-center text-gray-500">Загрузка объявлений...</p>
             </div>
         </section>
 
@@ -332,6 +332,3 @@
 
 </body>
 </html>
-
-
-
