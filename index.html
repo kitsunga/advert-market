@@ -93,6 +93,7 @@
                 });
 
                 showSection('exchange-section');
+                setupProfile();
             } catch (e) {
                 console.error("Ошибка инициализации Firebase:", e);
                 const errorElement = document.getElementById('error-message');
@@ -189,6 +190,54 @@
         window.closeModal = () => {
             document.getElementById('create-ad-modal').style.display = 'none';
         };
+
+        const setupProfile = () => {
+            const profileSection = document.getElementById('profile-section');
+            try {
+                if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.initDataUnsafe) {
+                    const userData = window.Telegram.WebApp.initDataUnsafe.user;
+                    if (userData) {
+                        const avatarUrl = userData.photo_url || 'https://placehold.co/100x100/A0AEC0/ffffff?text=User';
+                        const username = userData.username ? `@${userData.username}` : 'Нет username';
+                        const fullName = `${userData.first_name || ''} ${userData.last_name || ''}`.trim() || 'Пользователь';
+
+                        profileSection.innerHTML = `
+                            <div class="text-center my-8">
+                                <h2 class="text-2xl font-bold mb-4">Раздел «Профиль»</h2>
+                                <img src="${avatarUrl}" alt="User Avatar" class="w-24 h-24 rounded-full mx-auto shadow-md">
+                                <h3 class="text-xl font-semibold mt-4">${fullName}</h3>
+                                <p class="text-gray-600">${username}</p>
+                                <p class="text-gray-400 mt-2">ID: ${userData.id}</p>
+                                <p class="text-gray-600 mt-4">Здесь вы сможете настроить свой профиль и просмотреть свои объявления.</p>
+                            </div>
+                        `;
+                    } else {
+                        profileSection.innerHTML = `
+                            <div class="text-center my-8">
+                                <h2 class="text-2xl font-bold mb-4">Раздел «Профиль»</h2>
+                                <p class="text-red-500">Не удалось получить данные пользователя из Telegram.</p>
+                            </div>
+                        `;
+                    }
+                } else {
+                    profileSection.innerHTML = `
+                        <div class="text-center my-8">
+                            <h2 class="text-2xl font-bold mb-4">Раздел «Профиль»</h2>
+                            <p class="text-red-500">Приложение запущено не в среде Telegram Mini Apps.</p>
+                        </div>
+                    `;
+                }
+            } catch (e) {
+                console.error("Ошибка при загрузке данных профиля:", e);
+                profileSection.innerHTML = `
+                    <div class="text-center my-8">
+                        <h2 class="text-2xl font-bold mb-4">Раздел «Профиль»</h2>
+                        <p class="text-red-500">Произошла ошибка при загрузке профиля.</p>
+                    </div>
+                `;
+            }
+        };
+
     </script>
 
     <!-- Modal for Ad Creation -->
@@ -245,11 +294,7 @@
 
         <!-- Profile Section -->
         <section id="profile-section" class="section">
-            <div class="text-center my-8">
-                <h2 class="text-2xl font-bold">Раздел «Профиль»</h2>
-                <p class="text-gray-600 mt-2">Здесь ты сможешь настроить свою учетную запись и просмотреть свои объявления.</p>
-
-            </div>
+            <!-- Profile content will be dynamically loaded here -->
         </section>
 
         <!-- Settings Section -->
